@@ -813,7 +813,7 @@ let rec oneFilePass1 (f:file) : unit =
        * others declare it as "const". *)
       if hasAttribute "const" (typeAttrs vi.vtype) != 
          hasAttribute "const" (typeAttrs oldvi.vtype) then begin
-        newrep.ndata.vtype <- typeRemoveAttributes ["const"] newtype;
+        newrep.ndata.vtype <- newtype;
       end else begin
         newrep.ndata.vtype <- newtype;
       end;

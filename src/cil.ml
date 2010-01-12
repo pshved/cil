@@ -4129,7 +4129,7 @@ class defaultCilPrinterClass : cilPrinter = object (self)
 
     | TArray (elemt, lo, a) -> 
         (* ignore the const attribute for arrays *)
-        let a' = dropAttributes [ "const" ] a in 
+        let a' = a in 
         let name' = 
           if a' == [] then name else
           if nameOpt == None then printAttributes a' else 
@@ -4754,7 +4754,8 @@ let makeVarinfo global name typ =
     { vname = name;
       vid   = newVID ();
       vglob = global;
-      vtype = if global then typ else typeRemoveAttributes ["const"] typ;
+			(* SKY: fixing CIL to keep const-ness of local variables.  May be not needed actually. *)
+      vtype = typ;
       vdecl = lu;
       vinline = false;
       vattr = [];
