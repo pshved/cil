@@ -58,12 +58,14 @@ let rec array_to_pointer tau =
     TArray(dest,_,al) -> TPtr(array_to_pointer dest,al)
   | _ -> tau
 
+exception TmpOutsideAFun
+
 (* create a temporary variable in the current function *)
 let make_temp prefix tau = 
   let tau = array_to_pointer tau in 
   match !thefunc with
     Some(fundec) -> makeTempVar fundec ~name:prefix tau
-  | None -> failwith "simplemem: temporary needed outside a function"
+  | None -> raise TmpOutsideAFun
 
 (* separate loffsets into "scalar addition parts" and "memory parts" *)
 let rec separate_loffsets lo = 
@@ -76,7 +78,7 @@ let rec separate_loffsets lo =
 
 (* Recursively decompose the lvalue so that what is under a "Mem()"
  * constructor is put into a temporary variable. *)
-let rec handle_lvalue prefix (lb,lo) = 
+let rec handle_lvalue ?(skip_outside = false) prefix (lb,lo) = 
   let s,m = separate_loffsets lo in 
   match lb with
     Var(vi) -> 
@@ -85,11 +87,16 @@ let rec handle_lvalue prefix (lb,lo) =
 			(* special case to avoid generating "tmp = ptr;" *)
       handle_loffset prefix (lb,s) m 
   | Mem(e) -> 
-      begin
+      begin try
         let new_vi = make_temp prefix (typeOf e) in
         assignment_list := (Set((Var(new_vi),NoOffset),e,!currentLoc)) 
           :: !assignment_list ;
         handle_loffset prefix (Mem(Lval(Var(new_vi),NoOffset)),NoOffset) lo
+      with TmpOutsideAFun ->
+        if skip_outside then
+          (lb,s)
+        else
+          failwith "simplemem: temporary needed outside a function"
       end
 and handle_loffset prefix lv lo = 
   match lo with
@@ -98,7 +105,7 @@ and handle_loffset prefix lv lo =
   | Index(exp,o) -> handle_loffset prefix (addOffsetLval (Index(exp,NoOffset)) lv) o
 
 (* the transformation is implemented as a Visitor *)
-class simpleVisitor prefix = object 
+class simpleVisitor ?(skip_outside = false) prefix = object 
   inherit nopCilVisitor
 
   method vfunc fundec = (* we must record the current context *)
@@ -106,7 +113,7 @@ class simpleVisitor prefix = object
     DoChildren
 
   method vlval lv = ChangeDoChildrenPost(lv,
-      (fun lv -> handle_lvalue prefix lv))
+      (fun lv -> handle_lvalue ~skip_outside:skip_outside prefix lv))
 
   method unqueueInstr () = 
       let result = List.rev !assignment_list in
@@ -118,6 +125,14 @@ end
 let simplemem ?(prefix = "mem_") (f : file) =
   try 
     visitCilFileSameGlobals (new simpleVisitor prefix) f;
+    f
+  with e -> Printf.printf "Exception in Simplemem.simplemem: %s\n"
+    (Printexc.to_string e) ; raise e
+
+(* Auxillary entry point: apply the transformation to a file, but do not apply them outside functions.  Optionally, you may specify a prefix for the new temporary variables. *)
+let simplemem_inside_functions ?(prefix = "mem_") (f : file) =
+  try
+    visitCilFileSameGlobals (new simpleVisitor ~skip_outside:true prefix) f;
     f
   with e -> Printf.printf "Exception in Simplemem.simplemem: %s\n"
     (Printexc.to_string e) ; raise e
