@@ -112,13 +112,19 @@ class simpleVisitor ?(skip_outside = false) prefix = object
     thefunc := Some(fundec) ;
     DoChildren
 
+  method vglob _ = (* we must also record that there's no matching context *)
+    thefunc := None ;
+    DoChildren
+
   method vlval lv = ChangeDoChildrenPost(lv,
       (fun lv -> handle_lvalue ~skip_outside:skip_outside prefix lv))
 
   method unqueueInstr () = 
       let result = List.rev !assignment_list in
       assignment_list := [] ;
-      result 
+      match (skip_outside,!thefunc) with
+        |(true,None) -> [] (* pretend that we don't have any assignments *)
+        |(_,_) -> result (* this may throw an exception if the context is improper (global variable initializer needs simplemem *)
 end
 
 (* Main entry point: apply the transformation to a file.  Optionally, you may specify a prefix for the new temporary variables. *)
